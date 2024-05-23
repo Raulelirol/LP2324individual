@@ -191,16 +191,73 @@ class GenerateCode(ast.NodeVisitor):
         node.register = target
 
     # CHALLENGE:  Figure out some more sane way to refactor the above code
-
     def visit_PrintStatement(self, node):
         self.visit(node.value)
         if node.value.type.name == 'int':
             code = 'PRINTI'
         elif node.value.type.name == 'float':
             code = 'PRINTF'
+        elif node.value.type.name == 'char':
+            code = 'PRINTB'
         inst = (code, node.value.register)
         self.code.append(inst)
 
+    def emit_declaration(self, node):
+        if node.value:
+            self.visit(node.value)
+        if node.type.name == 'int':
+            code = 'VARI'
+            store = 'STOREI'
+        elif node.type.name == 'float':
+            code = 'VARF'
+            store = 'STOREF'
+        elif node.type.name == 'char':
+            code = 'VARB'
+            store = 'STOREB'
+        else:
+            raise RuntimeError(f'Unsupported type {node.type}')
+        self.code.append((code, node.name))
+        if node.value:
+            self.code.append((store, node.value.register, node.name))
+
+    visit_ConstDeclaration = emit_declaration
+    visit_VarDeclaration = emit_declaration
+
+    def visit_SimpleLocation(self, node):
+        if node.usage == 'read':
+            if node.type.name == 'int':
+                code = 'LOADI'
+            elif node.type.name == 'float':
+                code = 'LOADF'
+            elif node.type.name == 'char':
+                code = 'LOADB'
+            else:
+                raise RuntimeError(f'Unsupported type {node.type}')
+            target = self.new_register()
+            self.code.append((code, node.name, target))
+            node.register = target
+        elif node.usage == 'write':
+            if node.type.name == 'int':
+                code = 'STOREI'
+            elif node.type.name == 'float':
+                code = 'STOREF'
+            elif node.type.name == 'char':
+                code = 'STOREB'
+            else:
+                raise RuntimeError(f'Unsupported type {node.type}')
+            # Note: For storing, it's assumed that the register
+            # was already attached to this node. See the assignment code
+            self.code.append((code, node.register, node.name))
+
+    def visit_ReadValue(self, node):
+        self.visit(node.location)
+        node.register = node.location.register
+
+    def visit_Assignment(self, node):
+        self.visit(node.value)
+        # Propagate the value to the location and visit
+        node.location.register = node.value.register
+        self.visit(node.location)
 # ----------------------------------------------------------------------
 #                          TESTING/MAIN PROGRAM
 #
